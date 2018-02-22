@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import yaml
+import os
+import json
 import zlib
 import argparse
 import logging
@@ -11,15 +12,21 @@ from cryptography.hazmat.primitives.asymmetric import padding
 import telethon
 from pymongo import MongoClient
 
+SECRETS_ROOT = '/etc/drouz'
+SESSIONS_ROOT = '/etc/drouz/sessions'
+
 logging.basicConfig(level=logging.DEBUG)
+
 
 def parse_args():
     return None
 
 
 def read_config():
-    with open('secrets.yml') as f:
-        return yaml.load(f.read())
+    env = os.environ['DROUZ_ENVIRONMENT']
+    logging.debug('Environment: {}'.format(env))
+    with open(SECRETS_ROOT + '/secrets-{}.yml'.format(env)) as f:
+        return json.load(f)
 
 
 def encrypt_dict(d):
@@ -48,12 +55,12 @@ def encrypt_dict(d):
     return encrypted_d
 
 
-def update_handler(update):
-    update_dict = update.to_dict()
-    print(update_dict)
-    update_dict_encrypted = encrypt_dict(update_dict)
-    mongo_db.update_log.insert_one(update_dict_encrypted)
-    print(update_dict_encrypted)
+def event_handler(event):
+    event_dict = event.to_dict()
+    print(event_dict)
+    event_dict_encrypted = encrypt_dict(event_dict)
+    mongo_db.event_log.insert_one(event_dict_encrypted)
+    print(event_dict_encrypted)
     print('Press Enter to stop this!')
 
 
@@ -64,7 +71,7 @@ def main():
     # Connect to telegram
     global telegram_client
     telegram_client = telethon.TelegramClient(
-        config['session'],
+        SESSIONS_ROOT + '/' + config['session'],
         config['telegram_auth']['api_id'],
         config['telegram_auth']['api_hash'],
         use_ipv6=False,
@@ -125,7 +132,7 @@ def main():
                 input('Enter code: ')
             )
         print(telegram_client.get_me())
-        telegram_client.add_update_handler(update_handler)
+        telegram_client.add_event_handler(event_handler, telethon.events.Raw)
         input('Press Enter to stop this!\n')
         telegram_client.disconnect()
     except:
